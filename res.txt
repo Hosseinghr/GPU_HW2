@@ -1,0 +1,9 @@
+8 threads:
+	Naive	CUDA	 in ms
+			12 threads:
+	Naive	CUDA	 in ms
+			16 threads:
+	Naive	CUDA	 in ms
+			32 threads:
+	Naive	CUDA	 in ms
+			

@@ -57,76 +57,6 @@ __global__ void blur_kernel_shared_memory_revised_II(int *img_out, int *img_in, 
         img_out[tid_y * width + tid_x] = sum / 9;
 }
 
-__global__ void blur_kernel_shared_memory_revised_I(int *img_out, int *img_in, int height, int width, int pad){
-	
-	int tid_x = threadIdx.x + blockIdx.x * blockDim.x;
-	int tid_y = threadIdx.y + blockIdx.y * blockDim.y;
-
-	extern __shared__ int img_in_s[]; // size = (blockDim.y + 2) * (blockDim.x + 2)
-
-	img_in_s[(threadIdx.y)*(blockDim.x+pad)+(threadIdx.x)] = 
-		img_in[(tid_y) * (width+2) + tid_x];
-	
-	if(threadIdx.y == blockDim.y - 1){ // Last row
-		img_in_s[(threadIdx.y+1)*(blockDim.x+pad)+(threadIdx.x)] = 
-			img_in[(tid_y+1) * (width+2) + tid_x];
-		img_in_s[(threadIdx.y+2)*(blockDim.x+pad)+(threadIdx.x)] = 
-			img_in[(tid_y+2) * (width+2) + tid_x];
-
-		if(threadIdx.y == blockDim.y - 1){ // Last Thread				
-			img_in_s[(threadIdx.y+1)*(blockDim.x+pad)+(threadIdx.x+1)] = 
-				img_in[(tid_y+1) * (width+2) + tid_x+1];
-			img_in_s[(threadIdx.y+2)*(blockDim.x+pad)+(threadIdx.x+1)] = 
-				img_in[(tid_y+2) * (width+2) + tid_x+1];
-			img_in_s[(threadIdx.y+1)*(blockDim.x+pad)+(threadIdx.x+2)] = 
-				img_in[(tid_y+1) * (width+2) + tid_x+2];
-			img_in_s[(threadIdx.y+2)*(blockDim.x+pad)+(threadIdx.x+2)] = 
-				img_in[(tid_y+2) * (width+2) + tid_x+2];
-		}
-	}
-	
-	if(threadIdx.x == blockDim.x - 1){ // Last column
-		img_in_s[(threadIdx.y)*(blockDim.x+pad)+(threadIdx.x+1)] = 
-			img_in[(tid_y) * (width+2) + tid_x+1];
-		img_in_s[(threadIdx.y)*(blockDim.x+pad)+(threadIdx.x+2)] = 
-			img_in[(tid_y) * (width+2) + tid_x+2];
-	}
-
-	__syncthreads();
-
-	int sum = 0;
-	sum += img_in_s[(threadIdx.y) * (blockDim.x+pad) + threadIdx.x];
-	sum += img_in_s[(threadIdx.y) * (blockDim.x+pad) + threadIdx.x+1];
-	sum += img_in_s[(threadIdx.y) * (blockDim.x+pad) + threadIdx.x+2];
-	sum += img_in_s[(threadIdx.y+1) * (blockDim.x+pad) + threadIdx.x];
-	sum += img_in_s[(threadIdx.y+1) * (blockDim.x+pad) + threadIdx.x+1];
-	sum += img_in_s[(threadIdx.y+1) * (blockDim.x+pad) + threadIdx.x+2];
-	sum += img_in_s[(threadIdx.y+2) * (blockDim.x+pad) + threadIdx.x];
-	sum += img_in_s[(threadIdx.y+2) * (blockDim.x+pad) + threadIdx.x+1];
-	sum += img_in_s[(threadIdx.y+2) * (blockDim.x+pad) + threadIdx.x+2];
-	sum /= 9;
-
-	img_out[tid_y * width + tid_x] = sum;
-}
-
-__global__ void blur_kernel(int *img_out, int *img_in, int height, int width){
-	
-	int tid_x = threadIdx.x + blockIdx.x * blockDim.x;
-	int tid_y = threadIdx.y + blockIdx.y * blockDim.y;
-
-	int sum = 0;
-	sum += img_in[(tid_y) * (width + IMAGE_PAD_SIZE) + tid_x];
-	sum += img_in[(tid_y) * (width + IMAGE_PAD_SIZE) + tid_x + 1];
-	sum += img_in[(tid_y) * (width + IMAGE_PAD_SIZE) + tid_x + 2];
-	sum += img_in[(tid_y + 1) * (width + IMAGE_PAD_SIZE) + tid_x];
-	sum += img_in[(tid_y + 1) * (width + IMAGE_PAD_SIZE) + tid_x + 1];
-	sum += img_in[(tid_y + 1) * (width + IMAGE_PAD_SIZE) + tid_x + 2];
-	sum += img_in[(tid_y + 2) * (width + IMAGE_PAD_SIZE) + tid_x];
-	sum += img_in[(tid_y + 2) * (width + IMAGE_PAD_SIZE) + tid_x + 1];
-	sum += img_in[(tid_y + 2) * (width + IMAGE_PAD_SIZE) + tid_x + 2];
-	img_out[tid_y * width + tid_x] = sum / 9;
-}
-
 void sequential_blur(int *img_out, int *img_in, int height, int width){
 
 	for(int i = 0; i < height; i++){
@@ -158,21 +88,26 @@ int main(int argc, char *argv[]){
 	int *input_h, *output_h, *device_output_h;
 	int *input_d, *output_d;
 	int stream_count;
+	int IMAGE_SIZE_X, IMAGE_SIZE_Y;
 	// int work_per_thread;
 
-	if(argc != 4){
+	if(argc != 5){
 		printf("Correct way to execute this program is:\n");
-		printf("./blur block_size_x block_size_y stream_count\n");
-		printf("For example:\n./blur 16 16 4\n");
+		printf("./blur IMAGE_SIZE_X IMAGE_SIZE_Y BLOCK_SIZE_X BLOCK_SIZE_Y\n");
+		printf("For example:\n./blur 1000 10000 16 16\n");
 		return 1;
 	}
+
+	IMAGE_SIZE_X = atoi(argv[1]);
+	IMAGE_SIZE_Y = atoi(argv[2]);
+	block_size_x = atoi(argv[3]);
+	block_size_y = atoi(argv[4]);
 
 	input_size = (IMAGE_SIZE_X + IMAGE_PAD_SIZE) * (IMAGE_SIZE_Y + IMAGE_PAD_SIZE);
 	output_size = IMAGE_SIZE_X * IMAGE_SIZE_Y;
 
-	block_size_x = atoi(argv[1]);
-	block_size_y = atoi(argv[2]);
-	stream_count = atoi(argv[3]);
+
+	stream_count = 2;
 	// work_per_thread = atoi(argv[4]);
 
 	cudaStream_t* streams = (cudaStream_t *)malloc(sizeof(cudaStream_t) * STREAM_NUMBERS);
